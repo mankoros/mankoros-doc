@@ -3,7 +3,7 @@
 #let heiti = ("Noto Sans CJK SC", "Times New Roman")
 #let songti = ("Noto Serif CJK SC", "Times New Roman")
 #let zhongsong = ("Noto Serif CJK SC", "Times New Roman")
-#let mono = ("FiraCode Nerd Font Mono")
+#let mono = ("FiraCode Nerd Font Mono", "Courier New", "Courier")
 
 #let indent() = {
   box()
