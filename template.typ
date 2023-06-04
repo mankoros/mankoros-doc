@@ -1,8 +1,8 @@
 // modified from https://github.com/werifu/HUST-typst-template
 
-#let heiti = ("Noto Sans CJK SC","Times New Roman")
-#let songti = ("Noto Serif CJK SC","Times New Roman")
-#let zhongsong = ("Noto Serif CJK SC","Times New Roman")
+#let heiti = ("Noto Sans CJK SC", "Times New Roman")
+#let songti = ("Noto Serif CJK SC", "Times New Roman")
+#let zhongsong = ("Noto Serif CJK SC", "Times New Roman")
 #let mono = ("FiraCode Nerd Font Mono")
 
 #let indent() = {
