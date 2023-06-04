@@ -1,4 +1,4 @@
-DOCS := $(shell find doc -name "*.typ")
+DOCS := $(shell find doc -name "*.typ"|sort -d)
 
 pdf: docs-all
 	@typst compile main.typ

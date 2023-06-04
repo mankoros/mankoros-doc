@@ -3,7 +3,7 @@
 #let heiti = ("Noto Sans CJK SC", "Times New Roman")
 #let songti = ("Noto Serif CJK SC", "Times New Roman")
 #let zhongsong = ("Noto Serif CJK SC", "Times New Roman")
-#let mono = ("FiraCode Nerd Font Mono", "Courier New", "Courier")
+#let mono = ("FiraCode Nerd Font Mono", "Sarasa Mono SC","Courier New", "Courier")
 
 #let indent() = {
   box()
@@ -90,6 +90,7 @@
   locate(loc => {
     let elements = query(heading.where(outlined: true), loc)
     for el in elements {
+      if el.level >=3 {continue}
       // 是否有 el 位于前面，前面的目录中用拉丁数字，后面的用阿拉伯数字
       let before_toc = query(heading.where(outlined: true).before(loc), loc).find((one) => {one.body == el.body}) != none
       let page_num = if before_toc {
@@ -105,15 +106,15 @@
         } else {none}
 
         if el.level == 1 {
-          set text(weight: "black")
+          set text(weight: "bold")
           if chapt_num == none {} else {
             chapt_num
-            "　　"
+            h(4pt,weak: true)
           }
           el.body
         } else {
           chapt_num
-          "　"
+          h(6pt, weak: true)
           el.body
         }
       }]
@@ -124,6 +125,20 @@
       linebreak()
     }
   })
+}
+
+#let abstract_page() = {
+  set heading(level: 1, numbering: none)
+  show <_zh_abstract_>: {
+    align(center)[
+      #text(font: heiti, size: 18pt, "摘　　要")
+    ]
+  }
+  [= 摘要 <_zh_abstract_>]
+
+  set text(font: songti, size: 12pt)
+
+  include "abstract.typ"
 }
 
 
@@ -327,8 +342,6 @@
     // #pagebreak()
   ]
 
-  // 原创性声明
-  // declaration()
   // pagebreak()
 
   counter(page).update(0)
@@ -360,7 +373,7 @@
   )
 
   set text(font: songti, 12pt)
-  set par(justify: true, leading: 1.24em, first-line-indent: 0em)
+  set par(justify: true, leading: 1.24em, first-line-indent: 2em)
   show par: set block(spacing: 1.24em)
 
   set heading(numbering: (..nums) => {
@@ -379,13 +392,17 @@
   }
 
   // 首段不缩进，手动加上 box
-  // show heading: it => {
-  //   set text(weight: "bold", font: heiti, size: 12pt)
-  //   set block(above: 1.5em, below: 1.5em)
-  //   it
-  // } + empty_par()
+  show heading: it => {
+    set text(weight: "bold", font: heiti, size: 12pt)
+    set block(above: 1.5em, below: 1.5em)
+    it
+  } + empty_par()
 
   counter(page).update(1)
+  
+  abstract_page()
+  
+  pagebreak()
 
   // 目录
   chinese_outline()
@@ -410,20 +427,33 @@
 
   counter(page).update(1)
 
-  // 代码块(TODO: 加入行数)
+  // 行内代码
   show raw.where(block: false): it => {
     set text(font: mono, 12pt)
     it
     
   }
 
-
+  // 代码块
+  // 紧接着的段落无缩进，加入一个空行
   show raw.where(block: true): it => {
     set text(font: mono, 10pt)
     set block(inset: 5pt, fill: rgb(217, 217, 217, 1), width: 100%)
     set par(leading: 0.62em, first-line-indent: 0em)
     it
   }
+  
+  // 无序列表
+  set list(indent: 2em)
+  show list: it => {
+    it
+  } + empty_par()
+
+  // 有序列表
+  set enum(indent: 2em)
+  show enum: it => {
+    it
+  } + empty_par()
 
   body
 }

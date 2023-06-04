@@ -2,3 +2,5 @@
 .vscode
 ## pdf
 *.pdf
+## build
+doc-all.typ
