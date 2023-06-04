@@ -9,17 +9,11 @@
   logopath: "./figure/hitsz_logo.jpg"
 )
 
-// #include "arch.typ"
+#include "doc-all.typ"
 
-// #pagebreak()
 
-// #include "async.typ"
-
-// #pagebreak()
-
-#pagebreak()
-#acknowledgement()[
+// #acknowledgement()[
   
-致谢
+// 致谢
 
-]
+// ]

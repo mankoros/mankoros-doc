@@ -379,11 +379,11 @@
   }
 
   // 首段不缩进，手动加上 box
-  show heading: it => {
-    set text(weight: "bold", font: heiti, size: 12pt)
-    set block(above: 1.5em, below: 1.5em)
-    it
-  } + empty_par()
+  // show heading: it => {
+  //   set text(weight: "bold", font: heiti, size: 12pt)
+  //   set block(above: 1.5em, below: 1.5em)
+  //   it
+  // } + empty_par()
 
   counter(page).update(1)
 
@@ -411,9 +411,17 @@
   counter(page).update(1)
 
   // 代码块(TODO: 加入行数)
-  show raw: it => {
+  show raw.where(block: false): it => {
+    set text(font: mono, 12pt)
+    it
+    
+  }
+
+
+  show raw.where(block: true): it => {
     set text(font: mono, 10pt)
     set block(inset: 5pt, fill: rgb(217, 217, 217, 1), width: 100%)
+    set par(leading: 0.62em, first-line-indent: 0em)
     it
   }
 
