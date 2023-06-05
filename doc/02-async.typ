@@ -471,45 +471,45 @@ async fn foo() {
 内核态中最接近用户态的是 `userloop` 函数之中:
 
 ```rs
+// src/process/userloop.rs:48
 pub async fn userloop(lproc: Arc<LightProcess>) {
     // ...
-        // 上下文保存在此
-        let context = lproc.context();
-        match lproc.status() {
-            // ...
-            ProcessStatus::READY => {
-                // ...
-                // run_user 函数便是切换到用户态的函数
-                run_user(context);
-                //...
-            }
-            // ...
-        }
-
-        // 根据 scause 的值来判断是什么原因导致的陷入, 从而进行不同的处理
-        let scause = scause::read().cause();
+    // 上下文保存在此
+    let context = lproc.context();
+    match lproc.status() {
         // ...
-        match scause {
-            scause::Trap::Exception(e) => match e {
-                Exception::UserEnvCall => {
-                    // 系统调用
-                    is_exit = Syscall::new(context, lproc.clone()).syscall().await;
+        ProcessStatus::READY => {
+            // ...
+            // run_user 函数便是切换到用户态的函数
+            run_user(context);
+    //...
+
+    // 根据 scause 的值来判断是什么原因导致的陷入, 从而进行不同的处理
+    let scause = scause::read().cause();
+    // ...
+    match scause {
+        scause::Trap::Exception(e) => match e {
+            Exception::UserEnvCall => {
+                // 系统调用
+                is_exit = Syscall::new(context, lproc.clone())
+                    .syscall().await;
+            }
+            Exception::InstructionPageFault
+            | Exception::LoadPageFault 
+            | Exception::StorePageFault => 
+                { /* 缺页异常, 略去 */ }
+            Exception::InstructionFault 
+            | Exception::IllegalInstruction => 
+                { /* 略去 */ }
+            _ => todo!(),
+        },
+        scause::Trap::Interrupt(i) => match i {
+            Interrupt::SupervisorTimer => {
+                // 定时器中断, 让出本轮执行权
+                if !is_exit {
+                    yield_now().await;
                 }
-                Exception::InstructionPageFault
-                | Exception::LoadPageFault | Exception::StorePageFault => { /* 缺页异常, 略去 */ }
-                Exception::InstructionFault | Exception::IllegalInstruction => { /* 略去 */ }
-                _ => todo!(),
-            },
-            scause::Trap::Interrupt(i) => match i {
-                Interrupt::SupervisorTimer => {
-                    // 定时器中断, 让出本轮执行权
-                    if !is_exit {
-                        yield_now().await;
-                    }
-                }
-                _ => todo!(),
-            },
-        }
+            }
     // ...
 ```
 
