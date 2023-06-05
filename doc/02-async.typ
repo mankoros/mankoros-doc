@@ -169,14 +169,14 @@ async fn add(x: i32, y: i32) -> i32 {
 
 === `Future` 的边界
 
-上面的论述了 `Future` 的组合方式,
-但要想写出真实可用的异步程序,
-我们还缺少两个部分:
+上面的论述了 `Future` 的组合方式，
+但要想写出真实可用的异步程序，
+我们还缺少两个部分：
 最初和最后的 `Future`.
-而这两部分都与 `Future::poll` 方法的第二个参数 `Context` 息息相关.
+而这两部分都与 `Future::poll` 方法的第二个参数 `Context` 息息相关。
 
 我们先来考虑如何在一个普通的 `main` 函数中调用我们刚刚写的 `Future`.
-假设我们通过了某种魔法操作获得了一个平凡的, 不起作用的 `Context` 对象,
+假设我们通过了某种魔法操作获得了一个平凡的，不起作用的 `Context` 对象，
 我们应该会这样使用 `AddFuture`:
 
 ```rust
@@ -190,25 +190,25 @@ pub fn main() {
 }
 ```
 
-那么, 当我们调用一个 `Future` 的 `poll` 方法时,
-如果它返回了 `Pending`, 应该怎么办呢?
-一种直接的解法是直接写一个 `loop` 循环, 
-持续调用 `poll` 方法直到其返回 `Ready` 为止.
-但这样做有一个问题: 
-我们的 `main` 函数会被阻塞在 **一个** `Future` 上.
+那么，当我们调用一个 `Future` 的 `poll` 方法时，
+如果它返回了 `Pending`, 应该怎么办呢？
+一种直接的解法是直接写一个 `loop` 循环，
+持续调用 `poll` 方法直到其返回 `Ready` 为止。
+但这样做有一个问题：
+我们的 `main` 函数会被阻塞在 **一个** `Future` 上。
 
-初看这似乎不是什么问题, 
-但如果我们需要等待多种资源去完成多个任务时, 
-阻塞在一个 `Future` 上就会变得非常低效.
-尤其是当我们可以让资源在就绪时调用某个回调函数来通知我们, 
-而不需要我们去轮询它们的就绪状态时,
-我们会很自然地想到: 
-能不能做一个队列, 当一个 `Future` 执行到最后, 卡在需要获取某个资源时, 
-我们让它设置好该资源的回调函数, 在资源就绪时重新将最开始的 `Future` 放回队列中等待执行, 
-自己则直接返回 `Pending` 放弃本次执行?
+初看这似乎不是什么问题，
+但如果我们需要等待多种资源去完成多个任务时，
+阻塞在一个 `Future` 上就会变得非常低效。
+尤其是当我们可以让资源在就绪时调用某个回调函数来通知我们，
+而不需要我们去轮询它们的就绪状态时，
+我们会很自然地想到：
+能不能做一个队列，当一个 `Future` 执行到最后，卡在需要获取某个资源时，
+我们让它设置好该资源的回调函数，在资源就绪时重新将最开始的 `Future` 放回队列中等待执行，
+自己则直接返回 `Pending` 放弃本次执行？
 
-而这, 就是 `Context` 的作用了.
-我们深入 `Context` 的实现, 会发现它大概长这样 (删去了一些无关紧要的成员):
+而这，就是 `Context` 的作用了。
+我们深入 `Context` 的实现，会发现它大概长这样 (删去了一些无关紧要的成员):
 
 ```rust
 pub struct Context<'a> {
@@ -229,24 +229,24 @@ pub struct RawWakerVTable {
 }
 ```
 
-那么, 只要我们将这个队列的指针和最外层的 `Future` 的指针保存到 `RawWaker::data` 中,
-并将 `RawWakerVTable` 的 `wake` 方法设置为将保存的最外层 `Future` 放回队列中,
-我们就能实现上面的想法了.
+那么，只要我们将这个队列的指针和最外层的 `Future` 的指针保存到 `RawWaker::data` 中，
+并将 `RawWakerVTable` 的 `wake` 方法设置为将保存的最外层 `Future` 放回队列中，
+我们就能实现上面的想法了。
 
-当然, 上面的都是非常简化的讨论, 
-实际要在 Rust 中实现上述操作需要考虑很多细节,
-比如各类数据结构的生命周期和内存位置等问题.
+当然，上面的都是非常简化的讨论，
+实际要在 Rust 中实现上述操作需要考虑很多细节，
+比如各类数据结构的生命周期和内存位置等问题。
 好在大部分时候我们不需要手动去实现自己的 `Context`,
-而是可以使用 `async_task` 库来帮助我们完成这些工作,
-我们只需要指定当 wake 方法被调用时,
-我们想要干什么就可以了.
+而是可以使用 `async_task` 库来帮助我们完成这些工作，
+我们只需要指定当 wake 方法被调用时，
+我们想要干什么就可以了。
 
 #import "04-process.typ": process_sch
 
-在目前版本的 MankorOS 中,
-我们基本上使用了上述实现.
-这相当于一个简单的 Round-Robin 调度器,
-具体细节可以参见 #link(process_sch, "进程调度") 一节.
+在目前版本的 MankorOS 中，
+我们基本上使用了上述实现。
+这相当于一个简单的 Round-Robin 调度器，
+具体细节可以参见 #link(process_sch, "进程调度") 一节。
 
 ```rs
 // src/executor/task_queue.rs:6
@@ -274,15 +274,15 @@ where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
 {
-    // 在此处指定当 cx.wake_by_ref() 被调用时, 我们需要它干什么
+    // 在此处指定当 cx.wake_by_ref() 被调用时，我们需要它干什么
     async_task::spawn(future, |runnable| TASK_QUEUE.push(runnable))
 }
 ```
 
-而在 `Future` 栈的另一头, 
-当我们需要等待某个资源时,
-我们就可以直接将对应的 `waker` 传给资源方, 
-等待回调, 同时返回 `Pending` 了.
+而在 `Future` 栈的另一头，
+当我们需要等待某个资源时，
+我们就可以直接将对应的 `waker` 传给资源方，
+等待回调，同时返回 `Pending` 了。
 具体细节可参见 #link(<wrap_future>, "包装型 Future").
 
 == 内核实现要点
@@ -466,9 +466,9 @@ async fn foo() {
 
 == 上下文切换
 
-本节将描述异步内核中用户态-内核态上下文切换的过程。
+本节将描述异步内核中用户态 - 内核态上下文切换的过程。
 
-内核态中最接近用户态的是 `userloop` 函数之中:
+内核态中最接近用户态的是 `userloop` 函数之中：
 
 ```rs
 // src/process/userloop.rs:48
@@ -484,7 +484,7 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
             run_user(context);
     //...
 
-    // 根据 scause 的值来判断是什么原因导致的陷入, 从而进行不同的处理
+    // 根据 scause 的值来判断是什么原因导致的陷入，从而进行不同的处理
     let scause = scause::read().cause();
     // ...
     match scause {
@@ -497,7 +497,7 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
             Exception::InstructionPageFault
             | Exception::LoadPageFault 
             | Exception::StorePageFault => 
-                { /* 缺页异常, 略去 */ }
+                { /* 缺页异常，略去 */ }
             Exception::InstructionFault 
             | Exception::IllegalInstruction => 
                 { /* 略去 */ }
@@ -505,7 +505,7 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
         },
         scause::Trap::Interrupt(i) => match i {
             Interrupt::SupervisorTimer => {
-                // 定时器中断, 让出本轮执行权
+                // 定时器中断，让出本轮执行权
                 if !is_exit {
                     yield_now().await;
                 }
@@ -513,12 +513,12 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
     // ...
 ```
 
-其中 `run_user` 函数只是汇编写成的上下文保存函数的简单包装. 
-于是 "进入用户态" 这个操作在内核看来不过是一个执行时间稍微久了那么一点的 `Future` 而已.
-而当用户尝试进行一个需要等待特定资源就绪的系统调用时,
-它会直接因为 Syscall `Future` 的 `Pending` 而被挂起,
-直到资源就绪才会重新将顶层 `Future` 返回给调度器.
-由于页表切换等环境准备都是在 `userloop` 之上的 `OutermostFuture` 中处理的,
+其中 `run_user` 函数只是汇编写成的上下文保存函数的简单包装。
+于是 "进入用户态" 这个操作在内核看来不过是一个执行时间稍微久了那么一点的 `Future` 而已。
+而当用户尝试进行一个需要等待特定资源就绪的系统调用时，
+它会直接因为 Syscall `Future` 的 `Pending` 而被挂起，
+直到资源就绪才会重新将顶层 `Future` 返回给调度器。
+由于页表切换等环境准备都是在 `userloop` 之上的 `OutermostFuture` 中处理的，
 而只要 `userloop` 中的 `.await` 导致其生成的 `Future` 返回 `Pending`,
-那么在一层层退出 `Future` 的过程中,
-环境自然会被切换回去, 无需进一步操心. 
+那么在一层层退出 `Future` 的过程中，
+环境自然会被切换回去，无需进一步操心。
