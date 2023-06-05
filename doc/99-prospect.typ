@@ -24,7 +24,7 @@
         [aaaa], [aaaaa]
     ),
     caption: "模块完成情况"
-)
+)<table8-complete>
 
 == 未来工作
 
