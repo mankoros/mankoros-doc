@@ -119,6 +119,45 @@ pub fn unmap_boot_seg() {
 }
 ```
 
+=== 页表的创建与回收
+
+新建进程的页表时，我们一般希望内核区域的映射能够共享，因此，MankorOS 在新建用户进程的页表时，会直接复制 boot 页表的内核段。
+由于 boot 页表没有用户段的映射，因此直接复制是安全的。
+
+```rs
+    pub fn new_with_kernel_seg() -> Self {
+        // Allocate 1 page for the root page table
+        let root_paddr: PhysAddr = Self::alloc_table();
+        let boot_root_paddr: PhysAddr = boot::boot_pagetable_paddr().into();
+
+        // Copy kernel segment
+        unsafe { 
+            root_paddr.as_mut_page_slice().
+                copy_from_slice(boot_root_paddr.as_page_slice())
+        }
+
+        PageTable {
+            root_paddr,
+            intrm_tables: vec![root_paddr],
+        }
+    }
+```
+
+页表回收时，MankorOS 利用 Rust 的 RAII 机制实现了进程结束的内存自动回收，该页表管理所有它映射的物理内存，使用一个`Vec`保存。
+当页表离开生命周期时，管理的物理内存将会被自动释放。
+
+```rs
+impl Drop for PageTable {
+    fn drop(&mut self) {
+        // shared kernel segment pagetable is not in intrm_tables
+        // so no extra things should be done
+        for frame in &self.intrm_tables {
+            frame::dealloc_frame((*frame).into());
+        }
+    }
+}
+```
+
 == 共享物理页管理
 
 在操作系统中，共享页面管理是一个很重要的问题。
