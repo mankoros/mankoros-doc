@@ -194,7 +194,82 @@ MankorOS 中所有段都是懒映射且懒加载的，
 正因如此，我们放弃了虚表方法可能带来的代码清晰度的提升与灵活性，
 而选择了性能更好的枚举实现。
 
-=== 缺页异常处理与 CoW 实现
+=== 缺页异常处理与 CoW
+
+当 `userloop` 中检测到用户程序因为缺页异常而返回内核时，
+会从 `stval` 寄存器中读出发生缺页异常的地址，
+在经过一些包装函数后，会来到 `UserArea::page_fault` 函数中：
+
+```rust
+// src/process/user_space/user_space.rs:193
+pub fn page_fault(
+    &self,
+    page_table: &mut PageTable,
+    range_begin: VirtAddr, // Allow unaligned mmap ?
+    access_vpn: VirtPageNum,
+    access_type: PageFaultAccessType,
+) -> Result<(), PageFaultErr> {
+    if !access_type.can_access(self.perm()) {
+        // 权限检查，如果访问权限不符合要求，则直接返回错误
+        // 此处"权限" 检查匹配的是 UserArea 中保存的，该区域应有的权限
+        // 而非页表中的权限 (页表中的权限会因为 CoW/懒加载 等改变)
+        return Err(PageFaultErr::PermUnmatch);
+    }
+
+    // 分配新物理页
+    let frame = alloc_frame()
+        .ok_or(PageFaultErr::KernelOOM)?;
+    // 遍历页表找到发生缺页异常的页的页表项
+    let pte = page_table.get_pte_copied_from_vpn(access_vpn);
+    if let Some(pte) = pte && pte.is_valid() {
+        // 如果权限正确，且页表有效，那么是因为 CoW 引起的缺页异常
+        // 因为 CoW 会将原来的页表项可写的页的权限设置为只读，而此处发生了真实的写入
+        let pte_flags = pte.flags();
+        // 减少旧物理页的引用计数
+        let old_frame = pte.paddr();
+        with_shared_frame_mgr(|mgr| mgr.remove_ref(old_frame.into()));
+        // 复制旧物理页的内容到新物理页
+        unsafe {
+            frame.as_mut_page_slice()
+                .copy_from_slice(old_frame.as_page_slice());
+        }
+    } else {
+        // 如果页表项无效，说明是懒加载
+        match &self.kind {
+            // 对匿名映射的段，懒加载并不需要向其写入任何数据
+            UserAreaType::MmapAnonymous => {}
+            // 对私有文件映射的段，懒加载需要去文件中读取对应范围内的数据
+            UserAreaType::MmapPrivate { file, offset } => {
+                let access_vaddr: VirtAddr = access_vpn.into();
+                let real_offset = offset + (access_vaddr - range_begin);
+                let slice = unsafe { frame.as_mut_page_slice() };
+                let _read_length = 
+                    file.sync_read_at(real_offset as u64, slice)
+                    .expect("read file failed");
+            }
+        }
+    }
+
+    // 修改页表项
+    page_table.map_page(access_vpn.into(), frame, self.perm().into());
+    Ok(())
+}
+```
+
+当地址空间发生 CoW 复制时，我们一项项遍历原来的页表项，
+将其修改为只读且将其映射的物理页的使用计数加一：
+
+```rust
+// src/process/user_space/mod.rs:260
+pub fn clone_cow(&mut self) -> Self {
+    Self {
+        page_table: self.page_table.copy_table_and_mark_self_cow(|frame_paddr|{
+            with_shared_frame_mgr(|mgr| mgr.add_ref(frame_paddr.into()));
+        }),
+        areas: self.areas.clone(),
+    }
+}
+```
 
 == 进程调度 <process_sch>
 #let process_sch = <process_sch>
@@ -230,4 +305,3 @@ where
     async_task::spawn(future, |runnable| TASK_QUEUE.push(runnable))
 }
 ```
-== 
