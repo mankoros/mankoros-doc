@@ -14,10 +14,7 @@ SV39 的规范，用户段 39 位以上均为 0，内核段 39 位以上均为 1
 
 具体的内存空间布局如下表：
 
-#img(
-    image("../figure/Address_Layout.jpg"),
-    caption: "地址空间"
-)<img:address_layout>
+TODO
 
 == 内核动态内存分配器
 

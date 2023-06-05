@@ -1,3 +1,5 @@
+#import "../template.typ": img
+
 = 进程设计
 
 MankorOS 支持进程和线程，进程和线程都是用轻量级线程 (`LightProcess`)
@@ -107,6 +109,13 @@ if flags.contains(CloneFlags::THREAD) {
 且内核空间占用的二级页表在不同用户程序之间是共享的。
 
 === 地址空间布局
+
+用户地址空间布局如下图所示：
+
+#img(
+    image("../figure/Address_Layout.jpg"),
+    caption: "地址空间"
+)<img:address_layout>
 
 === 地址空间管理
 
