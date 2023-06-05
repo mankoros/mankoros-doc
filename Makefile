@@ -13,4 +13,4 @@ docs-all:
 
 clean:
 	@rm -rf *.pdf
-	@rm -rf docs/*.pdf
+	@rm -rf doc/*.pdf
