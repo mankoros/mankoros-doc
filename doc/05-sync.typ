@@ -4,7 +4,7 @@
 
 回顾一下内存模型和缓存一致性的发展历史。
 
-最早期的多核处理器使用 Sequential Consistency 内存模型。 Sequential
+最早期的多核处理器使用 Sequential Consistency 内存模型。Sequential
 Consistency
 是一种严格的内存模型，它要求所有处理器核心之间的内存访问操作按照程序中编写的顺序执行。这意味着每个处理器核心看到的共享内存状态都是相同的，从而保证了数据的正确性。然而，这种模型的缺点是性能较低，因为它限制了处理器核心之间的并行度，所以在现代处理器中已经看不到使用了。
 
@@ -88,7 +88,7 @@ impl SpinLock {
 MankorOS 中，Rust 的
 RAII（资源获取即初始化）被用来确保在作用域结束时，自旋锁会被正确地释放。
 具体来说，MankorOS 定义了一个包含自旋锁的新类型，并实现 `Drop` trait
-来在该类型的实例离开作用域时释放锁。 类似以下的代码：
+来在该类型的实例离开作用域时释放锁。类似以下的代码：
 
 ```rust
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -138,9 +138,9 @@ trait，因此当该结构体离开作用域时，会自动调用 `unlock()` 方
 
 === 睡眠锁
 
-异步Rust中，睡眠锁的实现涉及Future状态的转换，在区域赛阶段，MankorOS并未实现睡眠锁，未来将会实现。
+异步 Rust 中，睡眠锁的实现涉及 Future 状态的转换，在区域赛阶段，MankorOS 并未实现睡眠锁，未来将会实现。
 
 == 进程间通信
 
-MankorOS在区预赛中仅实现了简单的进程间通信，使用一个`AtomicBool`保存信号的flag。
-为了支持wait系统调用，进程退出时会正常向父进程发送`SIGCHLD`信号。
+MankorOS 在区预赛中仅实现了简单的进程间通信，使用一个`AtomicBool`保存信号的 flag。
+为了支持 wait 系统调用，进程退出时会正常向父进程发送`SIGCHLD`信号。

@@ -18,3 +18,9 @@ clean:
 	@rm -rf *.pdf
 	@rm -rf doc-all.typ
 	@rm -rf doc/*.pdf
+
+format-lint:
+	@autocorrect --lint *.typ doc/*.typ
+	
+format-fix:
+	@autocorrect --fix *.typ doc/*.typ
