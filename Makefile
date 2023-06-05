@@ -8,7 +8,7 @@ watch: docs-all
 	@typst watch main.typ
 	
 docs-all:
-	@echo -n > doc-all.typ
+	@ > doc-all.typ
 	@for file in $(DOCS); do \
   		echo "#include \"$$file\"" >> doc-all.typ; \
 		echo "#pagebreak()" >> doc-all.typ; \
