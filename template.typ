@@ -5,15 +5,6 @@
 #let zhongsong = ("Noto Serif CJK SC", "Times New Roman")
 #let mono = ("FiraCode Nerd Font Mono", "Sarasa Mono SC","Courier New", "Courier")
 
-#let indent() = {
-  box()
-}
-
-#let indent_par(body) = {
-  box()
-  body
-}
-
 #let equation_num(_) = {
   locate(loc => {
     let chapt = counter(heading).at(loc).at(0)
@@ -90,6 +81,7 @@
   locate(loc => {
     let elements = query(heading.where(outlined: true), loc)
     for el in elements {
+      // 隐藏三级及以上标题
       if el.level >=3 {continue}
       // 是否有 el 位于前面，前面的目录中用拉丁数字，后面的用阿拉伯数字
       let before_toc = query(heading.where(outlined: true).before(loc), loc).find((one) => {one.body == el.body}) != none
@@ -177,8 +169,8 @@
 #let project(
   projectname: "",
   teamname: "",
-  teammates: "",
-  teachers: "",
+  teammates: (),
+  teachers: (),
   date: (1926, 8, 17),
   logopath: "",
   body,
@@ -328,9 +320,9 @@
       info_key("参赛队名"),
       info_value(teamname),
       info_key("队伍成员"),
-      info_value(teammates),
+      info_value(teammates.join("、")),
       info_key("指导老师"),
-      info_value(teachers),
+      info_value(teachers.join("、")),
     )
 
     #v(40pt)

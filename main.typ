@@ -3,8 +3,8 @@
 #show: project.with(
   projectname: "MankorOS",
   teamname: "MankorOS",
-  teammates: "满洋、梁韬、苏亦凡",
-  teachers: "夏文、仇洁婷",
+  teammates: ("满洋", "梁韬", "苏亦凡"),
+  teachers: ("夏文", "仇洁婷"),
   date: (2023, 6, 3),
   logopath: "./figure/hitsz_logo.jpg"
 )
