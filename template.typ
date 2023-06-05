@@ -81,7 +81,7 @@
 // inspired from https://github.com/lucifer1004/pkuthss-typst.git
 #let chinese_outline() = {
   align(center)[
-    #text(font: heiti, size: 18pt, "目　　录")
+    #text(font: heiti, size: 18pt, "目  录")
   ]
 
   set text(font: songti, size: 12pt)
@@ -109,12 +109,13 @@
           set text(weight: "bold")
           if chapt_num == none {} else {
             chapt_num
-            h(4pt,weak: true)
+            h(2pt, weak: true)
           }
           el.body
         } else {
+          h(2em)
           chapt_num
-          h(6pt, weak: true)
+          h(2pt, weak: true)
           el.body
         }
       }]
@@ -131,7 +132,7 @@
   set heading(level: 1, numbering: none)
   show <_zh_abstract_>: {
     align(center)[
-      #text(font: heiti, size: 18pt, "摘　　要")
+      #text(font: heiti, size: 18pt, "摘  要")
     ]
   }
   [= 摘要 <_zh_abstract_>]
@@ -224,7 +225,7 @@
       it.body
       it.supplement
       " " + it.counter.display(it.numbering)
-      "　" + it.caption
+      " " + it.caption
       locate(loc => {
         let chapt = counter(heading).at(loc).at(0)
         let c = counter("image-chapter" + str(chapt))
@@ -236,7 +237,7 @@
       set text(font: heiti, size: 12pt)
       it.supplement
       " " + it.counter.display(it.numbering)
-      "　" + it.caption
+      " " + it.caption
       locate(loc => {
         let chapt = counter(heading).at(loc).at(0)
         let c = counter("table-chapter" + str(chapt))
@@ -377,7 +378,7 @@
   show par: set block(spacing: 1.24em)
 
   set heading(numbering: (..nums) => {
-    nums.pos().map(str).join(".") + "　"
+    nums.pos().map(str).join(".") + " "
   })
   show heading.where(level: 1): it => {
     set align(center)
