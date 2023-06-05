@@ -441,7 +441,7 @@
     set block(inset: 5pt, fill: rgb(217, 217, 217, 1), width: 100%)
     set par(leading: 0.62em, first-line-indent: 0em)
     it
-  }
+  } + empty_par()
   
   // 无序列表
   // set list(indent: 2em)
