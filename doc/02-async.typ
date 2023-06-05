@@ -465,3 +465,60 @@ async fn foo() {
 而不用再手动实现 `Future` trait.
 
 == 上下文切换
+
+本节将描述异步内核中用户态-内核态上下文切换的过程。
+
+内核态中最接近用户态的是 `userloop` 函数之中:
+
+```rs
+pub async fn userloop(lproc: Arc<LightProcess>) {
+    // ...
+        // 上下文保存在此
+        let context = lproc.context();
+        match lproc.status() {
+            // ...
+            ProcessStatus::READY => {
+                // ...
+                // run_user 函数便是切换到用户态的函数
+                run_user(context);
+                //...
+            }
+            // ...
+        }
+
+        // 根据 scause 的值来判断是什么原因导致的陷入, 从而进行不同的处理
+        let scause = scause::read().cause();
+        // ...
+        match scause {
+            scause::Trap::Exception(e) => match e {
+                Exception::UserEnvCall => {
+                    // 系统调用
+                    is_exit = Syscall::new(context, lproc.clone()).syscall().await;
+                }
+                Exception::InstructionPageFault
+                | Exception::LoadPageFault | Exception::StorePageFault => { /* 缺页异常, 略去 */ }
+                Exception::InstructionFault | Exception::IllegalInstruction => { /* 略去 */ }
+                _ => todo!(),
+            },
+            scause::Trap::Interrupt(i) => match i {
+                Interrupt::SupervisorTimer => {
+                    // 定时器中断, 让出本轮执行权
+                    if !is_exit {
+                        yield_now().await;
+                    }
+                }
+                _ => todo!(),
+            },
+        }
+    // ...
+```
+
+其中 `run_user` 函数只是汇编写成的上下文保存函数的简单包装. 
+于是 "进入用户态" 这个操作在内核看来不过是一个执行时间稍微久了那么一点的 `Future` 而已.
+而当用户尝试进行一个需要等待特定资源就绪的系统调用时,
+它会直接因为 Syscall `Future` 的 `Pending` 而被挂起,
+直到资源就绪才会重新将顶层 `Future` 返回给调度器.
+由于页表切换等环境准备都是在 `userloop` 之上的 `OutermostFuture` 中处理的,
+而只要 `userloop` 中的 `.await` 导致其生成的 `Future` 返回 `Pending`,
+那么在一层层退出 `Future` 的过程中,
+环境自然会被切换回去, 无需进一步操心. 
