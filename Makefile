@@ -16,4 +16,5 @@ docs-all:
 
 clean:
 	@rm -rf *.pdf
+	@rm -rf doc-all.typ
 	@rm -rf doc/*.pdf
