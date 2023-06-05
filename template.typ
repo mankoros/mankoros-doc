@@ -231,12 +231,12 @@
         c.step()
       })
     } else if it.kind == "table" {
+      set text(font: songti, size: 12pt)
+      it.body
       set text(font: heiti, size: 12pt)
       it.supplement
       " " + it.counter.display(it.numbering)
       "　" + it.caption
-      set text(font: songti, size: 10.5pt)
-      it.body
       locate(loc => {
         let chapt = counter(heading).at(loc).at(0)
         let c = counter("table-chapter" + str(chapt))
@@ -444,14 +444,16 @@
   }
   
   // 无序列表
-  set list(indent: 2em)
+  // set list(indent: 2em)
   show list: it => {
+    set par(first-line-indent: 2em)
     it
   } + empty_par()
 
   // 有序列表
-  set enum(indent: 2em)
+  // set enum(indent: 2em)
   show enum: it => {
+    set par(first-line-indent: 2em)
     it
   } + empty_par()
 
