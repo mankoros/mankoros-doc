@@ -43,13 +43,15 @@ MankorOS 中，支持将块设备挂载到文件系统上，并通过 VFS
 open、read、write、seek 等函数），并在设备管理模块中注册了 VirtIO
 发现的块设备。
 
-== Fat32
+== FAT32 文件系统
 #label("fat32")
 
-Fat32 是一种常见的文件系统格式，广泛应用于 Windows
-系统及其他各种设备中，例如移动硬盘、SD 卡等。在 MankorOS
-中，文件系统模块实现了对 Fat32 文件系统的支持，用户可以对 Fat32
-格式的设备进行挂载和操作。
+FAT32 是一种常见的文件系统格式，广泛应用于 Windows
+系统及其他各种设备中，例如移动硬盘、SD 卡等。
+在 MankorOS 中，文件系统模块实现了对 FAT32 文件系统的支持，用户可以对 FAT32 格式的设备进行挂载和操作。
+MankorOS 还支持 MBR 格式的分区表，如果块设备上存在有 MBR 分区表，MankorOS 可以解析并挂载上面的多个文件系统。
+
+区域赛中，MankorOS 自动从 virtio blk 设备上识别 FAT32 文件系统，并能够自动执行上面的测试程序。
 
 == Pipe 与 Stdio
 #label("pipe-与-stdio")
@@ -73,6 +75,8 @@ SpinNoIrqLock 进行并发访问控制。
 切换到其他任务。当有足够的数据时，释放锁并返回读取的字节数。
 
 对于管道的其他操作，如 fsync 和 truncate，MankorOS 会返回不支持的错误。
+
+目前 MankorOS 的管道实现并不高效，高效的实现需要使用到暂未实现的异步睡眠锁，未来 MankorOS 将会对这个部分进行优化。
 
 stdio（standard input/output）是指标准输入输出，在 C
 语言中主要通过三个标准流 stdin、stdout 和 stderr 来实现。在 MankorOS
