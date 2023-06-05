@@ -2,7 +2,7 @@
 
 == 基础概念
 
-=== `Future`
+=== `Future` 之间的组合
 
 无栈协程的核心是 `Future`:
 
@@ -167,11 +167,123 @@ async fn add(x: i32, y: i32) -> i32 {
 }
 ```
 
-=== `Context` & `Waker`
+=== `Future` 的边界
 
-=== `Task`
+上面的论述了 `Future` 的组合方式,
+但要想写出真实可用的异步程序,
+我们还缺少两个部分:
+最初和最后的 `Future`.
+而这两部分都与 `Future::poll` 方法的第二个参数 `Context` 息息相关.
 
-=== `Executor`
+我们先来考虑如何在一个普通的 `main` 函数中调用我们刚刚写的 `Future`.
+假设我们通过了某种魔法操作获得了一个平凡的, 不起作用的 `Context` 对象,
+我们应该会这样使用 `AddFuture`:
+
+```rust
+pub fn main() {
+    let mut ctx: Context = /* some magic here */;
+    let result = AddFuture::new(1, 2).poll(&mut ctx);
+    match result {
+        Poll::Ready(x) => println!("result: {}", x),
+        Poll::Pending => todo!(),
+    }
+}
+```
+
+那么, 当我们调用一个 `Future` 的 `poll` 方法时,
+如果它返回了 `Pending`, 应该怎么办呢?
+一种直接的解法是直接写一个 `loop` 循环, 
+持续调用 `poll` 方法直到其返回 `Ready` 为止.
+但这样做有一个问题: 
+我们的 `main` 函数会被阻塞在 **一个** `Future` 上.
+
+初看这似乎不是什么问题, 
+但如果我们需要等待多种资源去完成多个任务时, 
+阻塞在一个 `Future` 上就会变得非常低效.
+尤其是当我们可以让资源在就绪时调用某个回调函数来通知我们, 
+而不需要我们去轮询它们的就绪状态时,
+我们会很自然地想到: 
+能不能做一个队列, 当一个 `Future` 执行到最后, 卡在需要获取某个资源时, 
+我们让它设置好该资源的回调函数, 在资源就绪时重新将最开始的 `Future` 放回队列中等待执行, 
+自己则直接返回 `Pending` 放弃本次执行?
+
+而这, 就是 `Context` 的作用了.
+我们深入 `Context` 的实现, 会发现它大概长这样 (删去了一些无关紧要的成员):
+
+```rust
+pub struct Context<'a> {
+    waker: &'a Waker,
+}
+pub struct Waker {
+    raw: RawWaker,
+}
+pub struct RawWaker {
+    data: *const (),
+    vtable: *const RawWakerVTable,
+}
+pub struct RawWakerVTable {
+    clone: unsafe fn(*const ()) -> RawWaker,
+    wake: unsafe fn(*const ()),
+    wake_by_ref: unsafe fn(*const ()),
+    drop: unsafe fn(*const ()),
+}
+```
+
+那么, 只要我们将这个队列的指针和最外层的 `Future` 的指针保存到 `RawWaker::data` 中,
+并将 `RawWakerVTable` 的 `wake` 方法设置为将保存的最外层 `Future` 放回队列中,
+我们就能实现上面的想法了.
+
+当然, 上面的都是非常简化的讨论, 
+实际要在 Rust 中实现上述操作需要考虑很多细节,
+比如各类数据结构的生命周期和内存位置等问题.
+好在大部分时候我们不需要手动去实现自己的 `Context`,
+而是可以使用 `async_task` 库来帮助我们完成这些工作,
+我们只需要指定当 wake 方法被调用时,
+我们想要干什么就可以了.
+
+#import "04-process.typ": process_sch
+
+在目前版本的 MankorOS 中,
+我们基本上使用了上述实现.
+这相当于一个简单的 Round-Robin 调度器,
+具体细节可以参见 #link(process_sch, "进程调度") 一节.
+
+```rs
+// src/executor/task_queue.rs:6
+pub struct TaskQueue {
+    queue: SpinNoIrqLock<VecDeque<Runnable>>,
+}
+impl TaskQueue {
+    pub const fn new() -> Self {
+        Self { queue: SpinNoIrqLock::new(VecDeque::new()) }
+    }
+    pub fn push(&self, task: Runnable) {
+        self.queue.lock(here!()).push_back(task);
+    }
+    pub fn fetch(&self) -> Option<Runnable> {
+        self.queue.lock(here!()).pop_front()
+    }
+}
+
+// src/executor/mod.rs:15
+lazy_static! {
+    static ref TASK_QUEUE: TaskQueue = TaskQueue::new();
+}
+pub fn spawn<F>(future: F) -> (Runnable, Task<F::Output>)
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    // 在此处指定当 cx.wake_by_ref() 被调用时, 我们需要它干什么
+    async_task::spawn(future, |runnable| TASK_QUEUE.push(runnable))
+}
+```
+
+而在 `Future` 栈的另一头, 
+当我们需要等待某个资源时,
+我们就可以直接将对应的 `waker` 传给资源方, 
+等待回调, 同时返回 `Pending` 了.
+具体细节可参见 #link(<wrap_future>, "包装型 Future").
 
 == 内核实现要点
 
@@ -227,7 +339,7 @@ pub fn spawn_proc(lproc: Arc<LightProcess>) {
 }
 ```
 
-=== 包装型 `Future`
+=== 包装型 `Future` <wrap_future>
 
 这种 `Future` 通常位于 `Future` 栈的最底层 (最后被调用的那个),
 用于将底层的回调接口包装成 `Future`.
