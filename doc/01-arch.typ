@@ -89,10 +89,45 @@ _boot_page_table_sv39:
 
 boot 页表使用了 huge page，直接将内核映像映射到正确的高位地址
 
+=== 打开分页
+
+使用汇编直接设置页表并打开修改地址翻译模式
+
+```rs
+unsafe extern "C" fn set_boot_pt(hartid: usize) {
+    core::arch::asm!(
+        "   la   t0, _boot_page_table_sv39
+            srli t0, t0, 12
+            li   t1, 8 << 60
+            or   t0, t0, t1
+            csrw satp, t0
+            ret
+        ",
+        options(noreturn),
+    )
+}
+```
+
 内核初始化结束后，低地址空间中的映射将被删除，留给用户空间。
+
+```rs
+pub fn unmap_boot_seg() {
+    let boot_pagetable = boot::boot_pagetable();
+    boot_pagetable[0] = 0;
+    boot_pagetable[2] = 0;
+}
+```
 
 == 共享物理页管理
 
+在操作系统中，共享页面管理是一个很重要的问题。
+MankorOS 使用 Rust 的 Arc 类型来实现共享页面的关系
+
+Arc 是一个智能指针类型，它允许多个所有权持有者拥有相同的数据。当最后一个所有权持有者离开作用域时，数据才会被释放。
+这个特性可以帮助我们轻松地实现共享页面的管理。
+
+MankorOS 中，进程结构体中的 `UserArea` 包含一个 Arc 类型，Arc 类型中的计数器表示当前有多少个进程正在使用该页面。当新的进程需要访问这个页面时，我们创建一个新的指向该结构体的智能指针，并将计数器加 1。当进程不再需要访问该页面时，我们只需将指向该结构体的智能指针的计数器减 1 即可。
+当所有的持有者都离开了作用域后，这个页会被 `Drop` Trait 释放回给物理页面管理器。
 
 == 缺页异常的处理
 

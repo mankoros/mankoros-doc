@@ -3,6 +3,9 @@ DOCS := $(shell find doc -name "*.typ"|sort -d)
 pdf: docs-all
 	@typst compile main.typ
 	
+
+watch: docs-all
+	@typst watch main.typ
 	
 docs-all:
 	@echo -n > doc-all.typ
