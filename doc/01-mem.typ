@@ -4,11 +4,11 @@
 
 == 内核动态内存分配器
 
-为了使用 Rust
-中的各种动态内存结构，需要在内核中实现一个动态内存的分配器。
+为了使用 Rust 中的各种动态内存结构，
+需要在内核中实现一个动态内存的分配器。
 
-MankorOS 的内核动态内存分配器使用了 Buddy allocator，来自 crate
-`buddy_system_allocator`。
+MankorOS 的内核动态内存分配器使用了 Buddy allocator，
+来自 crate `buddy_system_allocator`。
 
 Buddy allocator 是操作系统中一种常用的物理页分配算法，
 它的主要原理是将可用的物理内存按照 2 的幂次方进行划分，
