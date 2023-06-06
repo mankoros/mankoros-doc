@@ -1,3 +1,4 @@
+#import "../template.typ": img
 = 概述
 
 == MankorOS 介绍
@@ -46,4 +47,7 @@ MankorOS 是 Rust 编写的基于 RISC-V 的多核异步宏内核操作系统。
 
 == MankorOS 项目结构
 
-TODO: 一张图片
+#img(
+    image("../figure/Arch.jpg", width: 80%),
+    caption: "MankorOS 系统结构图"
+)
