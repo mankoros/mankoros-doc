@@ -11,7 +11,6 @@ docs-all:
 	@ > doc-all.typ
 	@for file in $(DOCS); do \
   		echo "#include \"$$file\"" >> doc-all.typ; \
-		echo "#pagebreak()" >> doc-all.typ; \
 	done
 
 clean:
