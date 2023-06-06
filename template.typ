@@ -424,14 +424,20 @@
   show raw.where(block: false): it => {
     set text(font: mono, 12pt)
     it
-    
   }
+  
+  show raw.where(block: false): box.with(
+     fill: rgb(217, 217, 217, 1),
+     inset: (x: 3pt, y: 0pt),
+     outset: (y: 3pt),
+     radius: 2pt
+  )
 
   // 代码块
   // 紧接着的段落无缩进，加入一个空行
   show raw.where(block: true): it => {
     set text(font: mono, 10pt)
-    set block(inset: 5pt, fill: rgb(217, 217, 217, 1), width: 100%)
+    set block(inset: 5pt, fill: rgb(217, 217, 217, 1), radius: 4pt, width: 100%)
     set par(leading: 0.62em, first-line-indent: 0em)
     it
   } + empty_par()
