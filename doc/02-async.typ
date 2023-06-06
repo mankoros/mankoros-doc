@@ -238,7 +238,7 @@ pub struct RawWakerVTable {
 比如各类数据结构的生命周期和内存位置等问题。
 好在大部分时候我们不需要手动去实现自己的 `Context`,
 而是可以使用 `async_task` 库来帮助我们完成这些工作，
-我们只需要指定当 wake 方法被调用时，
+我们只需要指定当 `wake` 方法被调用时，
 我们想要干什么就可以了。
 
 #import "04-process.typ": process_sch
