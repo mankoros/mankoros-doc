@@ -16,7 +16,7 @@
 
 #tbl(
     table(
-        columns: (100pt, 200pt),
+        columns: (100pt, 350pt),
         inset: 10pt,
         stroke: 0.7pt,
         align: horizon,

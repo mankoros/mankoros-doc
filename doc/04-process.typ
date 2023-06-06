@@ -4,7 +4,6 @@
 
 MankorOS 支持进程和线程，
 进程和线程都是用轻量级线程 (`LightProcess`) 结构统一表示。
-
 在本章中，将先后介绍：
 
 -  `LightProcess` 结构体
