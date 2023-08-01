@@ -5,7 +5,7 @@
   teamname: "MankorOS",
   teammates: ("满洋", "梁韬", "苏亦凡"),
   teachers: ("夏文", "仇洁婷"),
-  date: (2023, 6, 3),
+  date: (2023, 8, 1),
   logopath: "./figure/hitsz_logo.jpg"
 )
 
