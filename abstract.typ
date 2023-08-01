@@ -2,11 +2,12 @@
 
 MankorOS 是 Rust 编写的基于 RISC-V 的多核异步宏内核操作系统。
 
-目前（2023.05.27）已满分通过初赛所有测试用例，下图为排行榜截图：
+于 2023-08-01 结束决赛第一阶段时，完成大部分功能测试，小部分性能测试的适配。
+所属 VisionFive 2 赛道的排行榜如 @leaderboard-final1 所示：
 
 #img(
-    image("./figure/leaderboard-pre.png"),
-    caption: "初赛排行榜"
+    image("figure/leaderboard-final1.png"),
+    caption: "决赛第一阶段测试排行榜"
 )
 
 下表为 MankorOS 各模块的完成情况：
