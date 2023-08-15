@@ -378,6 +378,21 @@ async fn foo() {
 
 使用该 `Future` 时，可以使很大一部分包装型 `Future` 得以直接使用 `async fn` 来实现，而不用再手动实现 `Future` trait.
 
+=== `SelectFutre`
+
+该 future 依次遍历 poll 每个内部子 future，若有返回 ready 的则自身返回 ready，仅当所有的子 future 都返回 pending 时，才返回 pending。该 future 行为类似于 unix 中的 poll 和 select 函数，因而得名，常用于实现 ppoll 和 pselect 系统调用。
+
+在实现该 future 时，应额外关注“多次唤醒”的问题。由于每次 poll 该 future 会依次对所有子 future 进行 poll，那么很有可能在第二个子 future 返回了 ready，该次 poll 返回后，第一个子 future 达成唤醒条件，future 被重新加入到调度队列并再次执行。应当在 `SelectFuture` 中记录一个 flag 用于判断该 future 是否已返回过一次 ready，若为 ture 则应当立即返回 pending，将自己抛离调度器，防止被多次唤醒导致执行了多次子 future。
+
+该 future 可以设计为接受若干个不同返回类型的子 future 形式，也可以设计为接受一串返回类型相同的子 future 数组的形式，在实现上比较自由。由于 rust 目前并不支持变参泛型功能，因此实现任意数量的不同返回类型的该种 future 在设计上具有本质困难。
+
+=== `JoinFuture`
+
+该 future 依次遍历 poll 每个内部子 future，若有返回 ready 的则将结果存放于自身中，仅当所有
+的子 future 都返回 ready 了，它才返回 ready。该 future 行为类似于 pthread 库中的 join，因而得名。
+
+与 `SelectFuture` 相同，该 future 可以设计为接受若干个不同返回类型的子 future 形式，也可以设计为接受一串返回类型相同的子 future 数组的形式。
+
 == 上下文切换
 
 本节将描述异步内核中用户态 - 内核态上下文切换的过程。
@@ -428,3 +443,48 @@ pub async fn userloop(lproc: Arc<LightProcess>) {
 ```
 
 其中 `run_user` 函数只是汇编写成的上下文保存函数的简单包装。于是 "进入用户态" 这个操作在内核看来不过是一个执行时间稍微久了那么一点的 `Future` 而已。而当用户尝试进行一个需要等待特定资源就绪的系统调用时，它会直接因为 Syscall `Future` 的 `Pending` 而被挂起，直到资源就绪才会重新将顶层 `Future` 返回给调度器。由于页表切换等环境准备都是在 `userloop` 之上的 `OutermostFuture` 中处理的，而只要 `userloop` 中的 `.await` 导致其生成的 `Future` 返回 `Pending`, 那么在一层层退出 `Future` 的过程中，环境自然会被切换回去，无需进一步操心。
+
+== 睡眠与定时任务
+
+在内核中，睡眠与定时任务的实现根本在于内核设置的定时中断处理函数。传统上，在中断处理函数中无法加入耗时较长的逻辑，因此对于定时任务的实现一般是将绑定着的函数指针与上下文加入到（内核）调度器中，而不是直接执行对应的定时任务。在异步内核中，内核任务与用户任务被一视同仁地在异步调度器中处理，用户任务不过是被特殊包装起来的 future。因此，在异步内核中，定时任务的实现是非常自然的。
+
+MankorOS 中的定时模块的核心数据结构为一二叉堆，借助堆来实现 $O(log n)$ 的插入与最小元素删除。延时任务在被计算出唤醒时间之后以此为键加入到堆中，每次定时中断时查看堆顶元素是否到时，若是则持续弹出直到否。
+
+堆中元素定义如下：
+
+```rust    
+// TODO：填充代码
+```
+
+在异步内核中，“将任务加入到调度队列中”等价于“唤醒 future (`cx.waker.wake_by_ref()`)”，于是我们完全可以使用 `Waker` 代替函数指针来代表一个待调度的任务，在时间条件满足之后，只需要直接唤醒即可。
+
+=== 停滞当前 future 链
+
+我们可以轻松写出一个 future，它直接将当前 waker 放入定时二叉堆中，随后返回 pending 放弃执行：
+
+```rust    
+struct SleepFuture {
+    wake_up_time: AbsTimeT,
+}
+impl Future for SleepFuture {
+    type Output = ();
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = unsafe { self.get_unchecked_mut() };
+        if this.wake_up_time <= get_time_ms() {
+            // 确保不会因为调动时间早于当前时间而永远不会被执行
+            Poll::Ready(())
+        } else {
+            // 直接从 cx 中取出当前 waker 加入到队列中，然后返回 pending 放弃执行
+            get_sleep_queue().push(Node {
+                wake_up_time: this.wake_up_time,
+                waker: cx.waker().clone(),
+            });
+            Poll::Pending
+        }
+    }
+}
+```
+
+与上文提到的 select future 组合，可以轻松地实现 pselect 等系统调用中的超时功能：要么是 SleepFuture 返回，要么是另一个具体 future 返回。而它自身便可以异步地实现 sleep 系统调用。
+
+=== 在给定时间后执行新的 future
