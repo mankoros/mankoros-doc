@@ -7,6 +7,7 @@ MankorOS 支持进程和线程，进程和线程都是用轻量级线程 (`Light
 -  `LightProcess` 结构体
 -  用户地址空间管理
 -  进程调度
+-  异步 ELF 解析与装载
 
 == 进程和线程
 
@@ -21,16 +22,24 @@ MankorOS 支持进程和线程，进程和线程都是用轻量级线程 (`Light
   -  进程号 `id`
   -  进程状态 `state`
   -  退出码 `exit_code`
+  -  进程上下文 `context`
 -  进程关系信息
+  -  进程组 ID `pgid`
   -  父进程 `parent`
   -  #strong[子进程数组 `children`]
   -  #strong[进程组信息 `group`] (用于实现线程组)
 -  进程资源信息
+  -  共享内存表 `shm_table`
   -  #strong[地址空间 `memory`]
   -  #strong[文件系统信息 `fsinfo`]
   -  #strong[文件描述符表 `fdtable`]
--  其他
+-  信号相关信息
   -  #strong[信号处理函数 `signal`]
+  -  定时器信息 `timer_map`
+  -  事件总线 `event_bus`
+-  其他
+  -  线程私有信息 `private_info`
+  -  `procfs` 相关信息 `procfs_info`
 
 `LightProcess` 代码如下所示：
 
@@ -39,18 +48,27 @@ type Shared<T> = Arc<SpinNoIrqLock<T>>;
 
 pub struct LightProcess {
     id: PidHandler,
+    pgid: AtomicUsize,
     parent: Shared<Option<Weak<LightProcess>>>,
     context: SyncUnsafeCell<Box<UKContext, Global>>,
 
     children: Arc<SpinNoIrqLock<Vec<Arc<LightProcess>>>>,
     status: SpinNoIrqLock<SyncUnsafeCell<ProcessStatus>>,
+    timer: SpinNoIrqLock<TimeStat>,
     exit_code: AtomicI32,
+    shm_table: SpinNoIrqLock<ShmTable>,
 
     group: Shared<ThreadGroup>,
     memory: Shared<UserSpace>,
     fsinfo: Shared<FsInfo>,
     fdtable: Shared<FdTable>,
-    signal: SpinNoIrqLock<signal::SignalSet>,
+
+    event_bus: SpinNoIrqLock<EventBus>,
+    signal: Shared<Signal>,
+    timer_map: SpinNoIrqLock<BTreeMap<usize, bool>>,
+
+    private_info: SpinNoIrqLock<PrivateInfo>,
+    procfs_info: SpinNoIrqLock<ProcFSInfo>,
 }
 ```
 
@@ -249,3 +267,43 @@ where
     async_task::spawn(future, |runnable| TASK_QUEUE.push(runnable))
 }
 ```
+
+== 异步 ELF 解析与装载
+
+为了更好地与我们的异步内核适配，在决赛阶段我们重写了 elf 解析模块与装载模块。解析方面将原本使用第三方库 `xmas_elf` 直接实现的同步解析改为了手写的异步解析 (但仍然复用了该库中一些数据结构的定义)。该模块的实现过程参考了往年队伍 FTL-OS 的对应实现，但更加简洁。装载方面则直接重写了初赛时相对混乱的逻辑，仔细地解决了非对齐段的加载问题，并减少了复制次数。
+
+异步 elf 解析器的实现相对简单，在一个结构体中存放 elf header 信息，当需要读取具体 program header 信息才解析对应的 offset 并向文件发出异步读取请求即可。装载方面，对于对齐且文件大小等于内存大小的段，直接复用了 private mmap 的设施，实现了懒加载; 对于不对齐或是文件大小小于内存大小的段，我们则先强制映射好用户页表，随后直接将对应区域的内存空间转换为 slice 传至文件的 read 方法中异步复制。相比初赛时我们的实现，减少了一次无用的复制。
+
+```rust
+// 非对齐段或需要填充的段的加载
+// amb---mb-------------------------------me---ame
+//       fb---------------fe
+// ensure the memory area [amb, ame) is mapped
+self.with_mut_memory(|m| {
+    m.areas_mut()
+        .insert_mmap_anonymous_at(aligned_mem_begin, aligned_mem_size, area_perm)
+        .unwrap();
+    m.force_map_area(aligned_mem_begin);
+});
+
+// fill file contents or zeros
+let _auto_sum = AutoSUM::new();
+unsafe {
+    let mut ptr = SyncMutPtr::<u8>::new_usize(mem_begin.bits());
+
+    // fill [fb, fe) with file content
+    let len = ph.file_size as usize;
+    let slice = core::slice::from_raw_parts_mut(ptr.get(), len);
+    assert_eq!(elf_file.read_at(file_offset, slice).await?, len);
+    ptr = ptr.add(len);
+
+    // fill [fe, me) with zeros
+    let len = mem_end - (mem_begin + ph.file_size as usize);
+    ptr.write_bytes(0, len);
+    ptr = ptr.add(len);
+
+    // left [amb, mb) and [me, ame) untouched
+}
+```
+
+在实现新的 elf 装载模块的过程中，我们遇到了不少问题，于是我们实现了一个简单的辅助函数 (`UserAreaManager::print_all`)，它能将一整个物理页的内容计算为一个 64 位的哈希值，随后将进程的整个地址空间的映射关系与页哈希值在日志中打印出来。通过对比新旧实现中对应页的哈希值，我们很快发现了问题所在，并解决了它们。事实证明这个函数在查找内核无意中对用户程序内存进行的错误修改页很有帮助。
