@@ -103,8 +103,6 @@ FAT 模块主要提供对下一个 cluster 的搜寻、对空闲块的查找等�
 
 由于上层 VFS 提供的页缓存机制，文件内容的读写并不需要经过块缓存系统。但是文件元信息要如何维护呢？我们选择了跟随文件记录其代表的 Standard 8.3 dentry 的块号与块内偏移量，同时为了加快查询速度，在文件对象创建时我们会直接将一个完整的 8.3 dentry 加入到文件中，只有在文件对象被释放，并且该 8.3 dentry 脏，才会修改块缓存中对应的数据。这种做法使得块缓存得以免于存放整个 8.3 dentry 所在的块（它之中可能包含许多“无用”的 LFN），同时又保证了对文件元信息操作的速度。
 
-// TODO：真的是完整的 8.3 dentry 吗？
-
 由于 VFS 中已经包含了对并行文件读写串行化的锁实现，因此在 fat32 中，我们并没有在文件与块缓存的块中加入任何的锁机制（当然，对各个模块本身的信息的读写都还是要上锁以考虑并行安全性的），而是选择相信上层的串行化机制会确保不会重入不该重入的函数。
 
 === 文件夹
@@ -113,22 +111,54 @@ FAT 模块主要提供对下一个 cluster 的搜寻、对空闲块的查找等�
 Fat32 的文件夹逻辑上可以视为一个巨大的，每个元素 32 byte 长的 entry 数组，其中每个 entry 可以是：
 
 - Empty entry
+- Unused entry
 - Standard 8.3 entry (STD / 8.3)
 - Long file name entry (LFN)
 
-其中 empty entry 的首字节为 0，而后二种 entry 则依赖 attr 区分（偏移量为 `TODO` 的一个字节）。STD entry 中存放的是文件的修改时间、首个 cluster 号之类的元信息，而 LFN 则是用于存放文件名。若干个 LFN（可以为零）与一个紧随其后的 STD 组成了一个完整的“目录项”，描述了一个名字 - 元信息 - 文件的映射。
+其中 empty entry 的首字节为 0，只会出现在文件夹的末尾，指示文件夹的结束。Unused entry 可能随机出现在文件夹的中间，是被删除了的文件在文件夹中留下的 "洞".后二种 entry 则是正常文件的 entry, 依赖 attr 区分（偏移量为 `11` 的一个字节）。STD entry 中存放的是文件的修改时间、首个 cluster 号之类的元信息，而 LFN 则是用于存放文件名。若干个 LFN（可以为零）与一个紧随其后的 STD 组成了一个完整的“目录项”，描述了一个名字 - 元信息 - 文件的映射。
 
 由于此处使用 `DEntry`有歧义，在我们的代码中使用 `AtomDEntry` 来指代单个 STD/LFN entry，而使用 `GroupDEntry` 来指代完整的一个“N*LFN + STD”的组合。
 
 由于 fat32 设计上的缺陷，我们在遇到一个 STD 之前，并不能知道它前面会存在多少个 LFN；并且，一个 GroupDEntry 的组合也有可能跨 Sector 甚至 Cluster。为此，我们在逻辑上将文件夹抽象为 entry 数组，使用一个类似于“滑动窗口”的辅助数据结构来支持任意变长文件名的读写：
 
 ```rust
-// TODO
+struct AtomDEntryWindows { /* ... */ }
+// 向上层用户提供 "文件夹是 AtomDEntry 数组" 的假象，
+// 维护该逻辑数组上的一个窗口，根据当前的窗口自动维护需要保持的块缓存 
+impl AtomDEntryWindows {
+    // 将窗口的左边移动 n 个 entry, 如果移动后有旧块滑出了窗口，则将其从块缓存中移除
+    pub async fn move_left(&mut self, n: usize) -> SysResult<()> { /* ... */ }
+    // 将窗口的右边移动 1 个 entry, 如果移动后有新块滑入了窗口，则将其加入块缓存
+    pub async fn move_right_one(&mut self) -> SysResult<()> { /* ... */ }
+}
+
+// 向上层用户提供 "文件夹是 GroupDEntry 数组" 的假象，
+// 自动识别当前 GroupDEntry 的边界，利用 AtomDEntryWindows 维护缓存
+struct GroupDEntryIter { /* ... */ }
+impl GroupDEntryIter {
+    // 向前标记新的 GroupDEntry 的结束 (STD)
+    pub async fn mark_next(&mut self) -> SysResult<Option<()>> { /* ... */ }
+    // 离开当前标记的 GroupDEntry
+    pub async fn leave_next(&mut self) -> SysResult<()> { /* ... */ }
+
+    // 当 self 成功标记了一个新的 GroupDEntry 时，可以对其对应的属性进行相应的读写操作
+    // 由于此时 GroupDEntry 已经被标记，与其相关的块都已被缓存在内存中，因此它们都是同步操作
+    pub fn collect_name(&self) -> String { /* ... */ }
+    pub fn get_attr(&self) -> Fat32DEntryAttr { /* ... */ }
+    pub fn get_begin_cluster(&self) -> ClusterID { /* ... */ }
+    pub fn get_size(&self) -> u32 { /* ... */ }
+    pub fn change_size(&self, new_size: u32) { /* ... */ }
+
+    // 同时，我们还可以删除当前标记或在当前为洞的位置插入一个新的 GroupDEntry
+    pub fn can_create(&self, dentry: &FatDEntryData) -> bool { /* ... */ }
+    pub async create_entry(&mut self, dentry: &FatDEntryData) -> SysResult<()> { /* ... */ }
+    pub fn delete_entry(&mut self) { /* ... */ }
+}
 ```
 
 // TODO：这里应该补充一张类似状态机的窗口滑动图。
 
-由此，我们便实现了一个以 sector 为调度单位的异步任意长文件名解析方法。
+由此，我们便实现了一个以 sector 为调度单位的异步任意长 dentry 解析方法。
 
 === 分区支持
 #label("fs-fat32-partition")
