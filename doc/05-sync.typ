@@ -107,8 +107,123 @@ impl<'a> Drop for SpinLockGuard<'a> {
 
 === 睡眠锁
 
-异步 Rust 中，睡眠锁的实现涉及 Future 状态的转换，在区域赛阶段，MankorOS 并未实现睡眠锁，未来将会实现。
+异步睡眠锁的实现相对直接，只需要在锁中维护一个 waker 队列，当尝试获取锁时，如果锁已被占用，就将当前 waker 加入到队列中并返回 pending 即可。当锁被释放时，若当前 waker 队列非空，则唤醒队列中的第一个 waker, 并将其从队列中移除。
 
-== 进程间通信
+```rust
+/// 睡眠锁本体，保存数据和等待队列
+/// 使用方法：`let guard = A.lock().await;`
+pub struct SleepLock<T: ?Sized> {
+    inner: SpinNoIrqLock<SleepLockInner>,
+    data: UnsafeCell<T>,
+}
+/// 睡眠锁内部数据
+/// 反正修改队列都要获取锁，干脆把 flag 也放在里边
+struct SleepLockInner {
+    // holding 假 & 队列空：无人持有锁
+    // holding 真 & 队列空：有人持有锁，但是没有人在等待锁
+    // holding 真 & 队列非空：有人持有锁，也有人在等待锁
+    holding: bool,
+    waiting: VecDeque<Waker>,
+}
+impl<T: Sized> SleepLock<T> {
+    pub fn new(data: T) -> Self { /* ... */ }
+    pub fn lock(&self) -> SleepLockFuture<'_, T> {
+        SleepLockFuture { mutex: self }
+    }
+}
 
-MankorOS 在区预赛中仅实现了简单的进程间通信，使用一个`AtomicBool`保存信号的 flag。为了支持 wait 系统调用，进程退出时会正常向父进程发送`SIGCHLD`信号。
+pub struct SleepLockFuture<'a, T: ?Sized + 'a> {
+    mutex: &'a SleepLock<T>,
+}
+impl<'a, T> Future for SleepLockFuture<'a, T> {
+    type Output = SleepLockGuard<'a, T>;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = unsafe { self.get_unchecked_mut() };
+        let mut inner = this.mutex.inner.lock(here!());
+        if inner.holding {
+            // 如果锁已经被持有，则将当前线程加入等待队列
+            inner.waiting.push_back(cx.waker().clone());
+            Poll::Pending
+        } else {
+            // 如果锁没有被持有，则将锁标记为被持有，并返回锁的 guard
+            inner.holding = true;
+            Poll::Ready(SleepLockGuard { mutex: this.mutex })
+        }
+    }
+}
+
+// 睡眠锁的 guard，实现了 Deref 和 DerefMut
+pub struct SleepLockGuard<'a, T: ?Sized + 'a> {
+    mutex: &'a SleepLock<T>,
+}
+impl<'a, T: ?Sized> Drop for SleepLockGuard<'a, T> {
+    fn drop(&mut self) {
+        let mut inner = self.mutex.inner.lock(here!());
+        // 因为新等待的人再次被唤醒时会获得新的 Guard, 而新的 guard.await 中会检查锁是否被持有
+        // 所以即时下一个人马上会将这个 flag 设为 true, 也不能不修改它为 false
+        // 否则下一个人会认为锁仍在被某人持有，从而进入等待; 而再也不会有人来唤醒这个锁了
+        inner.holding = false;
+        // 当睡眠锁的 Guard 被 drop 时，尝试唤醒等待队列中的第一个线程
+        if let Some(waker) = inner.waiting.pop_front() {
+            waker.wake();
+        }
+    }
+}
+```
+
+== 异步进程间通信
+
+很多时候一个进程正在进行的操作会被另一个进程打断，比如说一个正在等待管道数据的进程可能会被其父进程发来的 SIGKILL 打断。由于 MankorOS 中的信号只在进入用户态之前处理，因此为了实现这种 "打断" 操作，必须要有一种方法使得不在调度器中的进程在收到信号时能被重新加入到调度器中。MankorOS 参考了 FTL-OS 的事件总线机制，实现了一个相对简单的异步进程间通信机制。
+
+```rs
+type EventNodeId = usize;
+struct EventNode {
+    id: EventNodeId,
+    listen_for: EventKind,
+    waker: Ptr<Waker>,
+}
+pub struct EventBus {
+    events: Vec<EventNode>,
+    pool: UsizePool,
+}
+```
+
+对于需要被打断的异步等待，它会在本进程的事件总线中放入自己的 waker 再进入等待。然后若有其他进程向本进程发送信号，便会去查找事件总线中等待对应事件的节点，对其中的 waker 进行唤醒。值得注意的是，该实现方式的事件总线必须支持删除，因为当一个进程停止等待时 (比如从管道中读到数据了), 它的 waker 就有可能被析构，此时留在事件总线中的 waker 指针就有可能指向无效内存，因此必须在事件总线中删除这个节点。
+
+我们可以搭配下面的 future 与辅助函数实现这点：
+
+```rs
+pub struct EventBusWaitForFuture<'a> {
+    lproc: &'a LightProcess,
+    waker: &'a Waker,
+    event_id: Option<EventNodeId>,
+    listen_for: EventKind,
+}
+impl Future for EventBusWaitForFuture<'_> {
+    type Output = ();
+    fn poll(self: Pin<&mut Self>, _cx: Context<'_>) -> Poll<Self::Output> {
+        let this = unsafe { self.get_unchecked_mut() };
+        if this.event_id.is_none() {
+            // 如果还没有向事件总线注册，就注册一下并且放弃 CPU
+            let ptr = this.waker as *const _ as *mut _;
+            let id = this
+                .lproc
+                .with_mut_event_bus(|bus| bus.register(this.listen_for, Ptr::new(ptr)));
+            this.event_id = Some(id);
+            Poll::Pending
+        } else {
+            // 如果它被 poll 第二次，那么只有可能是被唤醒了
+            // 此时我们直接返回 Ready 让上层 future 继续执行
+            Poll::Ready(())
+        }
+    }
+}
+impl Drop for EventBusWaitForFuture<'_> {
+    fn drop(&mut self) {
+        // 如果直到它被 drop, 它都没有被唤醒第二次，就将自己从事件总线中删除
+        if let Some(id) = self.event_id {
+            self.lproc.with_mut_event_bus(|bus| bus.remove(id));
+        }
+    }
+}
+```
