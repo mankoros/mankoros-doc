@@ -24,8 +24,16 @@ MankorOS 是 Rust 编写的基于 RISC-V 的多核异步宏内核操作系统，
 │  ├── driver       # 驱动，包括块设备和 uart 驱动
 │  ├── executor     # 管理 future 执行
 │  ├── fs           # 文件系统
-│  ├── memory       # 内存
+│  │  ├── memfs     # 内存文件系统
+│  │  ├── new_vfs   # 虚拟文件系统
+│  │  ├── nfat32    # FAT32 文件系统
+│  │  └── procfs    # proc 文件系统
+│  ├── memory       # 物理内存管理
+│  │  ├── address   # 地址类型
+│  │  └── pagetable # 页表
 │  ├── process      # 进程
+│  │  ├── elf       # ELF 文件解析
+│  │  └── user_space
 │  ├── signal       # 信号
 │  ├── sync         # 同步，一致性、锁和进程通讯
 │  ├── syscall      # POSIX 系统调用
@@ -34,8 +42,11 @@ MankorOS 是 Rust 编写的基于 RISC-V 的多核异步宏内核操作系统，
 │  ├── trap         # 中断
 │  ├── xdebug       # debug 工具
 │  ├── boot.rs      # 启动
+│  ├── device_tree.rs   # 设备树解析
+│  ├── dtb.asm      # 目标平台的设备树二进制
 │  ├── lazy_init.rs # 懒加载
 │  ├── logging.rs   # 日志
+│  ├── final_test.rs
 │  ├── main.rs      
 │  └── utils.rs
 ├── vendor
