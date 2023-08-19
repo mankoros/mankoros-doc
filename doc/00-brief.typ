@@ -3,8 +3,6 @@
 
 == MankorOS 介绍
 
-TODO: update
-
 MankorOS 是 Rust 编写的基于 RISC-V 的多核异步宏内核操作系统，使用了以 `Future` 抽象为代表的无栈协程异步模型，提供统一的线程和进程表示，细粒度的资源共享以及段式地址空间管理，拥有虚拟文件系统和设备文件系统。
 
 在开发过程中，MankorOS 注重代码质量和规范性，确保每次 commit 都有意义的 commit message，并能够通过编译。这种严格的开发流程使 MankorOS 有高质量的代码，还可以减少 bug 的产生，从而提高项目的稳定性。
